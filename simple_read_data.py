@@ -4,6 +4,8 @@ from time import sleep
 from sys import stdout
 from daqhats import mcc134, HatIDs, HatError, TcTypes
 from daqhats_utils import select_hat_device, tc_type_to_string
+# __import__('daqhats_utils')
+
 
 # Constants
 CURSOR_BACK_2 = '\x1b[2D'
@@ -15,6 +17,9 @@ def main():
     delay_between_reads = 1  # Seconds
     channels = (0, 1, 2, 3)
 
+    # Creating a file with fileName#
+    dataFile = open('file_From_Python.txt', 'w')
+
     try:
         # Get an instance of the selected hat device object.
         address = select_hat_device(HatIDs.MCC_134)
@@ -25,14 +30,19 @@ def main():
 
         # Display the header row for the data table.
         print('\n  Sample', end='')
+        dataFile.write('Sample')
         for channel in channels:
             print('     Channel', channel, end='')
+            dataFile.write('     Channel')
+            dataFile.write(str(channel))
         print('')
+        dataFile.write('\n')
 
         samples_per_channel = 0
         while (samples_per_channel <= 10):
             # Display the updated samples per channel count
             print('\r{:8d}'.format(samples_per_channel), end='')
+            dataFile.write(str(samples_per_channel))
             samples_per_channel += 1
 
             # Read a single value from each selected channel.
@@ -50,7 +60,7 @@ def main():
             # stdout.flush()
             # Wait the specified interval between reads.
             sleep(delay_between_reads)
-
+        dataFile.close()
         
 
     except (HatError, ValueError) as error:
