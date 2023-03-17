@@ -1,0 +1,120 @@
+#!/bin/sh
+
+ToolPath='/usr/local/bin'
+
+if [ "$(id -u)" != "0" ]; then
+   echo "This script must be run as root" 1>&2
+   exit 1
+fi
+
+module_loaded=0
+overlay_loaded=0
+count=$(lsmod | grep i2c_dev | wc -l)
+if [ $count -eq 0 ]; then
+   # wait for modprobe to finish before proceeding
+   modprobe i2c_dev
+   count=0
+   while [ $count -eq 0 ]
+   do
+      count=$(lsmod | grep i2c_dev | wc -l)
+   done
+   module_loaded=1
+fi
+
+if [ -e "/dev/i2c-0" ]; then
+   BUS=0
+elif [ -e "/dev/i2c-3" ]; then
+   BUS=3
+else
+   dtoverlay i2c-gpio i2c_gpio_sda=0 i2c_gpio_scl=1 bus=3 > /dev/null 2>&1
+   rc=$?
+   if [ $rc != 0 ]; then
+      dtoverlay i2c-gpio i2c_gpio_sda=0 i2c_gpio_scl=1
+      rc=$?
+      if [ $rc != 0 ]; then
+         echo "Loading of i2c-gpio dtoverlay failed. Do an rpi-update (and maybe apt update; apt upgrade)."
+         exit $rc
+      fi
+   fi
+   # wait for dtoverlay to finish before proceeding
+   count=0
+   while [ $count -eq 0 ]
+   do
+      count=$(lsmod | grep i2c_gpio | wc -l)
+   done
+   overlay_loaded=1
+
+   if [ -e "/dev/i2c-3" ]; then
+      BUS=3
+   else
+      echo "Expected I2C bus (i2c-3) not found."
+      exit 1
+   fi
+fi
+
+modprobe at24
+rc=$?
+if [ "$rc" != 0 ]; then
+   if [ "$overlay_loaded" -eq 1 ]; then
+      dtoverlay -R i2c-gpio
+   fi
+   echo "Modprobe of at24 failed. Do an rpi-update."
+   exit $rc
+fi
+
+SYS=/sys/class/i2c-adapter/i2c-$BUS
+
+rm -f /etc/mcc/hats/*.bin
+
+echo "Reading..."
+
+index=0
+while [ "$index" -lt 8 ]
+do
+   address=$((0x50 + $index))
+   devname=$(printf '%s/%s-%04x' $SYS $BUS $address)
+   if [ ! -d "$devname" ]; then
+      printf '24c32 0x%x' $address > $SYS/new_device
+   fi
+
+   # try to read the eeprom
+   dd if=$devname/eeprom of=/dev/null bs=1 count=1 status=none 2> /dev/null
+   rc=$?
+
+   if [ "$rc" -eq 0 ]; then
+      # successs, read the entire eeprom
+      printf "Found EEPROM at address %d\n" $index
+      if [ "$index" != "0" ]; then
+         if [ ! -e "/etc/mcc/hats" ]; then
+            mkdir -p "/etc/mcc/hats"
+         fi
+         dd if=$devname/eeprom of=/etc/mcc/hats/eeprom_$index.bin status=none
+         sync
+      fi
+   fi
+
+   # remove the device
+   printf '0x%x' $address > $SYS/delete_device
+
+   index=$(($index + 1))
+done
+
+modprobe -r at24
+
+if [ "$overlay_loaded" -eq 1 ]; then
+   dtoverlay -R i2c-gpio
+   modprobe -r i2c_gpio
+fi
+
+if [ "$module_loaded" -eq 1 ]; then
+   modprobe -r i2c_dev
+fi
+
+# If there is an MCC 152 at an address other than 0, enable the I2C bus.
+if [ $($ToolPath/daqhats_check_152) -eq 1 ]; then
+   if [ $(raspi-config nonint get_i2c) -eq 1 ]; then
+      raspi-config nonint do_i2c 0
+   fi
+fi
+
+echo "Done"
