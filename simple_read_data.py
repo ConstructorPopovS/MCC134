@@ -34,53 +34,52 @@ def main():
             hat.tc_type_write(channel, tc_type)
         
         # Display the header row for the data table.
-        dataHeader = "Sample,"
+        dataHeader = "   Sample,   "
+        dataHeader += " Time,      "
         # print('\n  Sample', end='')
         for channel in channels:
             # print('     Channel', channel, end='')
-            dataHeader += " Channel" + str(channel) + " Data" + ","
-            dataHeader += " Channel" + str(channel) + " Time" + ","
+            dataHeader += " Channel" + str(channel) + ","
+            
         print(dataHeader)
         dataFile.write(dataHeader + '\n')
 
         samples_per_channel = 0
         startTime = float(0.0)
         
-        while (samples_per_channel <= 200):
+        while (samples_per_channel <= 100):
             dataRow = []
             dataRow.append(samples_per_channel)
             # Display the updated samples per channel count
-            print('\r{:8d}'.format(samples_per_channel), end='')
+            print('\r{:6d}'.format(samples_per_channel), end='')
 
             if samples_per_channel == 0:
-                print('IF', end='\n')
                 startTime = time.perf_counter()
+            
+            sampleTime = time.perf_counter()
+            sampleTimeFromStart = sampleTime - startTime
+            dataRow.append(sampleTimeFromStart)
+            print('{:12.2f} s'.format(sampleTimeFromStart), end='')
+
 
             # Read a single value from each selected channel.
             for channel in channels:
                 value = hat.t_in_read(channel)
-                channelTime = time.perf_counter()
-                channelTimeFromStart = float(channelTime) - float(startTime)
-                
-                dataRow.append(value)
-                dataRow.append(channelTimeFromStart)
 
-
+                # dataRow.append(value)
                 if value == mcc134.OPEN_TC_VALUE:
-                    print('     Open     ', end='')
-                    # writer.writerow('Open')
+                    print('   Open    ', end='')
+                    dataRow.append('Open')
                 elif value == mcc134.OVERRANGE_TC_VALUE:
-                    print('     OverRange', end='')
-                    # writer.writerow('OverRange')
+                    print(' OverRange ', end='')
+                    dataRow.append('OverRange')
                 elif value == mcc134.COMMON_MODE_TC_VALUE:
-                    print('   Common Mode', end='')
-                    # writer.writerow('CommonMode')
+                    print('Common Mode', end='')
+                    dataRow.append('CommonMode')
                 else:
                     print('{:12.2f} C'.format(value), end='')
                     strValue = str(value)
-                    # writer.writerow(strValue)
-
-                print('{:12.2f} s'.format(channelTimeFromStart), end='')
+                    dataRow.append(strValue)
 
             writer.writerow(dataRow)
             samples_per_channel += 1
